@@ -5,7 +5,9 @@ const CACHE_NAME = 'acaraplay-v1';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 // Install: precache all static assets
