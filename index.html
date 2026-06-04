@@ -107,8 +107,10 @@ input{font-family:inherit;outline:none;border:none}
   border-radius:var(--rs);font-size:9px;font-weight:700;letter-spacing:1px;width:100%}
 .fi-btn{background:rgba(64,192,112,.12);color:var(--success)}
 .fi-btn:hover{background:rgba(64,192,112,.22)}
+.fi-btn.fading{background:rgba(64,192,112,.7);color:#000;box-shadow:0 0 8px var(--success);}
 .fo-btn{background:rgba(232,64,64,.12);color:var(--danger)}
 .fo-btn:hover{background:rgba(232,64,64,.22)}
+.fo-btn.fading{background:rgba(232,64,64,.7);color:#fff;box-shadow:0 0 8px var(--danger);}
 
 /* ===== PLAYER SECTION ===== */
 .player-section{padding:18px 16px;display:flex;flex-direction:column;gap:14px;
@@ -159,11 +161,11 @@ input{font-family:inherit;outline:none;border:none}
 .mode-btn:hover{background:var(--surface3);color:var(--text)}
 .mode-btn.active{background:rgba(var(--accent-rgb),.15);color:var(--accent)}
 
-.fade-row{display:flex;align-items:center;gap:8px;background:var(--surface2);border-radius:var(--rs);padding:8px 12px}
-.lbl{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3)}
+.fade-row{display:flex;align-items:center;gap:8px;background:var(--surface2);border-radius:var(--rs);padding:8px 12px;margin-bottom:8px}
+.lbl{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);width:48px}
 .presets{display:flex;gap:4px;flex:1}
 .pset{background:var(--surface3);color:var(--text2);border-radius:6px;padding:4px 8px;
-  font-size:12px;font-weight:600;flex:1}
+  font-size:12px;font-weight:600;flex:1;text-align:center}
 .pset:hover{background:var(--border);color:var(--text)}
 .pset.active{background:var(--accent);color:#000}
 .fade-val{font-size:12px;color:var(--accent);font-weight:700;min-width:26px;text-align:right}
@@ -278,7 +280,7 @@ input{font-family:inherit;outline:none;border:none}
   border-radius:var(--rs);flex:1;font-size:14px}
 .modal-cancel{background:var(--surface2);color:var(--text2);padding:10px 20px;border-radius:var(--rs);font-size:14px}
 
-/* ===== FULLSCREEN MODE ===== */
+/* ===== FULLSCREEN OVERLAY ===== */
 .fullscreen-overlay{display:none;position:fixed;inset:0;z-index:300;
   background:radial-gradient(ellipse at center,#1a1200 0%,#0a0a0a 70%);
   flex-direction:column;align-items:center;justify-content:center;gap:24px}
@@ -421,12 +423,22 @@ svg{display:block;flex-shrink:0}
           <button class="mode-btn fi-btn" id="mobFiBtn" style="background:rgba(64,192,112,.12);color:var(--success)">IN</button>
           <button class="mode-btn fo-btn" id="mobFoBtn" style="background:rgba(232,64,64,.12);color:var(--danger)">OUT</button>
         </div>
+        
+        <!-- FADE IN ROW -->
         <div class="fade-row">
-          <span class="lbl">FADE</span>
-          <div class="presets" id="presets"></div>
-          <span class="fade-val" id="fadeVal">3s</span>
-          <input type="number" class="custom-in" id="customFade" min="0.5" max="30" step="0.5" value="3" style="display:none"/>
+          <span class="lbl">FADE IN</span>
+          <div class="presets" id="presetsIn"></div>
+          <span class="fade-val" id="fadeInVal">3s</span>
+          <input type="number" class="custom-in" id="customFadeIn" min="0.5" max="30" step="0.5" value="3" style="display:none"/>
         </div>
+        <!-- FADE OUT ROW -->
+        <div class="fade-row">
+          <span class="lbl">FADE OUT</span>
+          <div class="presets" id="presetsOut"></div>
+          <span class="fade-val" id="fadeOutVal">3s</span>
+          <input type="number" class="custom-in" id="customFadeOut" min="0.5" max="30" step="0.5" value="3" style="display:none"/>
+        </div>
+
         <div class="timer-row">
           <span class="lbl">TIMER</span>
           <input type="time" class="timer-in" id="timerInput"/>
@@ -538,7 +550,7 @@ svg{display:block;flex-shrink:0}
 
 <script>
 // ============================================================
-// STATE
+// STATE (with separate fade durations and fading flag)
 // ============================================================
 const state = {
   playlists: [],
@@ -551,8 +563,11 @@ const state = {
   isLoopingAll: false,
   isShuffling: false,
   crossfadeEnabled: true,
-  fadeDuration: 3,
-  fadePreset: '3',
+  fadeInDuration: 3,
+  fadeOutDuration: 3,
+  fadeInPreset: '3',
+  fadeOutPreset: '3',
+  isFading: false,
   autoClean: true,
   filterText: '',
   accentColor: '#e8a838',
@@ -572,7 +587,7 @@ let fadeTimer=null,dragging=false,dragSrcIdx=null,eqAnimId=null;
 let analyser=null,analyserData=null;
 
 // ============================================================
-// IDB
+// IDB (IndexedDB)
 // ============================================================
 let db;
 const IDB_NAME='acaraplay',IDB_VER=2;
@@ -591,7 +606,7 @@ async function saveState(){
   if(!db)return;
   const plData=state.playlists.map(pl=>({id:pl.id,name:pl.name,tracks:pl.tracks.map(t=>({id:t.id,name:t.name,filename:t.filename,size:t.size}))}));
   await dbSet('playlists',plData);
-  await dbSet('meta',{activePlaylistIdx:state.activePlaylistIdx,currentIdx:state.currentIdx,volume:state.volume,isMuted:state.isMuted,isLooping:state.isLooping,isLoopingAll:state.isLoopingAll,isShuffling:state.isShuffling,crossfadeEnabled:state.crossfadeEnabled,fadeDuration:state.fadeDuration,fadePreset:state.fadePreset,autoClean:state.autoClean,accentColor:state.accentColor});
+  await dbSet('meta',{activePlaylistIdx:state.activePlaylistIdx,currentIdx:state.currentIdx,volume:state.volume,isMuted:state.isMuted,isLooping:state.isLooping,isLoopingAll:state.isLoopingAll,isShuffling:state.isShuffling,crossfadeEnabled:state.crossfadeEnabled,fadeInDuration:state.fadeInDuration,fadeOutDuration:state.fadeOutDuration,fadeInPreset:state.fadeInPreset,fadeOutPreset:state.fadeOutPreset,autoClean:state.autoClean,accentColor:state.accentColor});
 }
 
 async function loadState(){
@@ -628,14 +643,34 @@ function cancelFade(){if(fadeTimer){clearInterval(fadeTimer);fadeTimer=null;}}
 function fadeVolTo(target,dur,onDone){
   cancelFade();
   if(!audioEl){onDone?.();return;}
+  state.isFading = true;
+  updateFadeIndicators(true);
   const steps=40,interval=dur*1000/steps;
   const start=audioEl.volume,diff=target-start;
   let step=0;
   fadeTimer=setInterval(()=>{
     step++;
     audioEl.volume=Math.max(0,Math.min(1,start+diff*(step/steps)));
-    if(step>=steps){clearInterval(fadeTimer);fadeTimer=null;audioEl.volume=target;onDone?.();}
+    if(step>=steps){
+      clearInterval(fadeTimer);fadeTimer=null;
+      audioEl.volume=target;
+      state.isFading=false;
+      updateFadeIndicators(false);
+      onDone?.();
+    }
   },interval);
+}
+
+function updateFadeIndicators(active){
+  const fiBtn=document.getElementById('fadeInBtn');
+  const foBtn=document.getElementById('fadeOutBtn');
+  if(active){
+    fiBtn.classList.add('fading');
+    foBtn.classList.add('fading');
+  }else{
+    fiBtn.classList.remove('fading');
+    foBtn.classList.remove('fading');
+  }
 }
 
 function createAudio(){
@@ -656,7 +691,7 @@ function onTimeUpdate(){
   updateSeek();updateRemain();updateFsSeek();
   if(state.crossfadeEnabled&&audioEl.duration){
     const left=audioEl.duration-audioEl.currentTime;
-    if(left<=state.fadeDuration+0.1&&left>0&&state.isPlaying&&!fadeTimer){
+    if(left<=state.fadeOutDuration+0.1&&left>0&&state.isPlaying&&!fadeTimer){
       fadeVolTo(0,left,()=>{if(state.isPlaying)playNext();});
     }
   }
@@ -693,7 +728,7 @@ async function loadTrack(idx,autoPlay=true){
       await el.play();
       state.isPlaying=true;
       setupMediaSession(track);
-      fadeVolTo(state.isMuted?0:state.volume,state.fadeDuration);
+      fadeVolTo(state.isMuted?0:state.volume,state.fadeInDuration);
       startEQ();
     }catch(e){console.warn(e);}
   }
@@ -707,7 +742,7 @@ async function play(){
   cancelFade();audioEl.volume=0;
   await audioEl.play();
   state.isPlaying=true;
-  fadeVolTo(state.isMuted?0:state.volume,state.fadeDuration);
+  fadeVolTo(state.isMuted?0:state.volume,state.fadeInDuration);
   updatePlayBtn();startEQ();
   const track=activePl().tracks[state.currentIdx];
   if(track)setupMediaSession(track);
@@ -716,7 +751,7 @@ async function play(){
 function pause(){
   if(!audioEl||!state.isPlaying)return;
   cancelFade();
-  fadeVolTo(0,state.fadeDuration,()=>{audioEl?.pause();state.isPlaying=false;updatePlayBtn();stopEQ();});
+  fadeVolTo(0,state.fadeOutDuration,()=>{audioEl?.pause();state.isPlaying=false;updatePlayBtn();stopEQ();});
 }
 
 function togglePlay(){if(state.isPlaying)pause();else play();}
@@ -743,13 +778,23 @@ function manualFadeIn(){
   cancelFade();
   if(!state.isPlaying){
     audioEl.volume=0;
-    audioEl.play().then(()=>{state.isPlaying=true;updatePlayBtn();startEQ();fadeVolTo(state.isMuted?0:state.volume,state.fadeDuration);});
-  }else{fadeVolTo(state.isMuted?0:state.volume,state.fadeDuration);}
+    audioEl.play().then(()=>{
+      state.isPlaying=true;
+      updatePlayBtn();startEQ();
+      fadeVolTo(state.isMuted?0:state.volume,state.fadeInDuration);
+    }).catch(e=>console.warn(e));
+  }else{
+    fadeVolTo(state.isMuted?0:state.volume,state.fadeInDuration);
+  }
 }
 
 function manualFadeOut(){
   cancelFade();
-  fadeVolTo(0,state.fadeDuration,()=>{audioEl?.pause();state.isPlaying=false;updatePlayBtn();stopEQ();});
+  fadeVolTo(0,state.fadeOutDuration,()=>{
+    if(audioEl)audioEl.pause();
+    state.isPlaying=false;
+    updatePlayBtn();stopEQ();
+  });
 }
 
 function seekTo(ratio){
@@ -1014,19 +1059,68 @@ function updateClearBtn(){document.getElementById('clearBtn').style.display=acti
 function fmtTime(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
 
 // ============================================================
-// FADE PRESETS
+// FADE PRESETS (separate for in and out)
 // ============================================================
-const PRESETS=[{l:'1s',v:'1'},{l:'2s',v:'2'},{l:'3s',v:'3'},{l:'5s',v:'5'},{l:'10s',v:'10'},{l:'…',v:'custom'}];
-function buildPresets(){
-  const c=document.getElementById('presets');c.innerHTML='';
-  PRESETS.forEach(p=>{const b=document.createElement('button');b.className='pset'+(state.fadePreset===p.v?' active':'');b.textContent=p.l;b.onclick=()=>setFadePreset(p.v);c.appendChild(b);});
+const PRESETS_LIST = [{l:'1s',v:'1'},{l:'2s',v:'2'},{l:'3s',v:'3'},{l:'5s',v:'5'},{l:'10s',v:'10'},{l:'…',v:'custom'}];
+
+function buildFadePresets(containerId, currentPreset, setterCallback, customInputId, valueSpanId, durationObj, durationKey){
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  PRESETS_LIST.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'pset' + (currentPreset === p.v ? ' active' : '');
+    btn.textContent = p.l;
+    btn.onclick = () => {
+      if(p.v === 'custom'){
+        setterCallback('custom');
+        document.getElementById(customInputId).style.display = '';
+        document.getElementById(valueSpanId).style.display = 'none';
+      } else {
+        setterCallback(p.v);
+        document.getElementById(customInputId).style.display = 'none';
+        document.getElementById(valueSpanId).style.display = '';
+        const val = parseFloat(p.v);
+        state[durationKey] = val;
+        document.getElementById(valueSpanId).textContent = val + 's';
+        saveState();
+      }
+    };
+    container.appendChild(btn);
+  });
 }
 
-function setFadePreset(v){
-  state.fadePreset=v;if(v!=='custom')state.fadeDuration=parseFloat(v);
-  const ci=document.getElementById('customFade');const fv=document.getElementById('fadeVal');
-  ci.style.display=v==='custom'?'':'none';fv.style.display=v==='custom'?'none':'';
-  fv.textContent=state.fadeDuration+'s';buildPresets();saveState();
+function setFadeInPreset(v){
+  state.fadeInPreset = v;
+  if(v !== 'custom') state.fadeInDuration = parseFloat(v);
+  const ci = document.getElementById('customFadeIn');
+  const valSpan = document.getElementById('fadeInVal');
+  if(v === 'custom'){
+    ci.style.display = '';
+    valSpan.style.display = 'none';
+  } else {
+    ci.style.display = 'none';
+    valSpan.style.display = '';
+    valSpan.textContent = state.fadeInDuration + 's';
+  }
+  buildFadePresets('presetsIn', state.fadeInPreset, setFadeInPreset, 'customFadeIn', 'fadeInVal', state, 'fadeInDuration');
+  saveState();
+}
+
+function setFadeOutPreset(v){
+  state.fadeOutPreset = v;
+  if(v !== 'custom') state.fadeOutDuration = parseFloat(v);
+  const ci = document.getElementById('customFadeOut');
+  const valSpan = document.getElementById('fadeOutVal');
+  if(v === 'custom'){
+    ci.style.display = '';
+    valSpan.style.display = 'none';
+  } else {
+    ci.style.display = 'none';
+    valSpan.style.display = '';
+    valSpan.textContent = state.fadeOutDuration + 's';
+  }
+  buildFadePresets('presetsOut', state.fadeOutPreset, setFadeOutPreset, 'customFadeOut', 'fadeOutVal', state, 'fadeOutDuration');
+  saveState();
 }
 
 // ============================================================
@@ -1213,7 +1307,23 @@ async function init(){
   await openDB();
   await loadState();
   applyAccent(state.accentColor);
-  buildEQ();buildPresets();buildColorSwatches();
+  buildEQ();
+  // build fade presets
+  buildFadePresets('presetsIn', state.fadeInPreset, setFadeInPreset, 'customFadeIn', 'fadeInVal', state, 'fadeInDuration');
+  buildFadePresets('presetsOut', state.fadeOutPreset, setFadeOutPreset, 'customFadeOut', 'fadeOutVal', state, 'fadeOutDuration');
+  // set initial UI for fade values
+  document.getElementById('fadeInVal').textContent = state.fadeInDuration + 's';
+  document.getElementById('fadeOutVal').textContent = state.fadeOutDuration + 's';
+  if(state.fadeInPreset === 'custom') document.getElementById('customFadeIn').style.display = '';
+  else document.getElementById('customFadeIn').style.display = 'none';
+  if(state.fadeOutPreset === 'custom') document.getElementById('customFadeOut').style.display = '';
+  else document.getElementById('customFadeOut').style.display = 'none';
+  document.getElementById('customFadeIn').value = state.fadeInDuration;
+  document.getElementById('customFadeOut').value = state.fadeOutDuration;
+  document.getElementById('customFadeIn').addEventListener('input', e=>{state.fadeInDuration=parseFloat(e.target.value)||3;document.getElementById('fadeInVal').textContent=state.fadeInDuration+'s';saveState();});
+  document.getElementById('customFadeOut').addEventListener('input', e=>{state.fadeOutDuration=parseFloat(e.target.value)||3;document.getElementById('fadeOutVal').textContent=state.fadeOutDuration+'s';saveState();});
+
+  buildColorSwatches();
   renderTabs();renderPlaylist();updateModes();updateVolUI();updatePlayBtn();
   updateTrackDisplay(activePl().tracks[state.currentIdx]||null);
   setupVolSlider();setupMobVolSlider();setupSeek();setupDropZone();
@@ -1244,7 +1354,6 @@ async function init(){
   document.getElementById('loopBtn').onclick=()=>{state.isLooping=!state.isLooping;updateModes();saveState();};
   document.getElementById('loopAllBtn').onclick=()=>{state.isLoopingAll=!state.isLoopingAll;updateModes();saveState();};
   document.getElementById('crossfadeBtn').onclick=()=>{state.crossfadeEnabled=!state.crossfadeEnabled;updateModes();saveState();};
-  document.getElementById('customFade').oninput=e=>{state.fadeDuration=parseFloat(e.target.value)||3;document.getElementById('fadeVal').textContent=state.fadeDuration+'s';saveState();};
   document.getElementById('timerSetBtn').onclick=()=>{const v=document.getElementById('timerInput').value;setTimer(v);};
   document.getElementById('fullscreenBtn').onclick=openFullscreen;
   document.getElementById('fsClose').onclick=closeFullscreen;
